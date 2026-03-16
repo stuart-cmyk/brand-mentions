@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Brand Mention Intelligence</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f3;
+    --bg-tertiary: #eeede8;
+    --text-primary: #1a1a18;
+    --text-secondary: #6b6b66;
+    --border-light: rgba(0,0,0,0.1);
+    --border-med: rgba(0,0,0,0.18);
+    --radius-md: 8px;
+    --radius-lg: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-primary: #1e1e1c;
+      --bg-secondary: #2a2a28;
+      --bg-tertiary: #242422;
+      --text-primary: #f0efe8;
+      --text-secondary: #9a9990;
+      --border-light: rgba(255,255,255,0.1);
+      --border-med: rgba(255,255,255,0.18);
+    }
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-tertiary); color: var(--text-primary); font-size: 15px; line-height: 1.5; min-height: 100vh; }
+  .shell { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+  .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 12px; }
+  .top-bar h1 { font-size: 20px; font-weight: 500; }
+  .status-label { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #888; flex-shrink: 0; }
+  .status-dot.live { background: #1D9E75; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .tabs { display: flex; gap: 2px; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-light); }
+  .tab { font-size: 13px; padding: 8px 16px; cursor: pointer; border: none; border-bottom: 2px solid transparent; background: none; color: var(--text-secondary); font-family: inherit; margin-bottom: -1px; }
+  .tab.active { color: var(--text-primary); border-bottom-color: var(--text-primary); }
+  .tab:hover:not(.active) { color: var(--text-primary); }
+  .section { display: none; }
+  .section.active { display: block; }
+  .entity-row { display: flex; gap: 12px; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: flex-start; }
+  .entity-group { display: flex; flex-direction: column; gap: 6px; }
+  .entity-group label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 12px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border-med); background: var(--bg-secondary); color: var(--text-secondary); }
+  .chip.brand { background: #E6F1FB; border-color: #185FA5; color: #0C447C; }
+  .chip.competitor { background: #FAECE7; border-color: #993C1D; color: #712B13; }
+  .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 1.5rem; }
+  .metric { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 14px; }
+  .metric .val { font-size: 24px; font-weight: 500; }
+  .metric .lbl { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .progress-wrap { margin-bottom: 1.5rem; }
+  .progress-bar { height: 4px; background: var(--bg-secondary); border-radius: 2px; overflow: hidden; margin-bottom: 6px; }
+  .progress-fill { height: 100%; background: #185FA5; border-radius: 2px; transition: width 0.3s; }
+  .prog-label { font-size: 12px; color: var(--text-secondary); }
+  .feed-area { background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 1.5rem; }
+  .feed-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border-light); background: var(--bg-secondary); flex-wrap: wrap; gap: 8px; }
+  .feed-header strong { font-size: 13px; font-weight: 500; }
+  .feed-filters { display: flex; gap: 4px; flex-wrap: wrap; }
+  .filter-btn { font-size: 11px; padding: 3px 9px; border-radius: var(--radius-md); border: 1px solid var(--border-light); background: var(--bg-primary); cursor: pointer; color: var(--text-secondary); font-family: inherit; }
+  .filter-btn.active { background: var(--bg-secondary); color: var(--text-primary); border-color: var(--border-med); }
+  .mention-item { padding: 12px 16px; border-bottom: 1px solid var(--border-light); display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+  .mention-item:last-child { border-bottom: none; }
+  .mention-url { font-size: 11px; color: var(--text-secondary); margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mention-title { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .mention-snippet { font-size: 12px; color: var(--text-secondary); line-height: 1.55; }
+  .mention-meta { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
+  .badge { font-size: 11px; padding: 2px 7px; border-radius: 4px; }
+  .badge.pos { background: #EAF3DE; color: #3B6D11; }
+  .badge.neg { background: #FCEBEB; color: #A32D2D; }
+  .badge.neu { background: var(--bg-secondary); color: var(--text-secondary); border: 1px solid var(--border-light); }
+  .badge.type { background: var(--bg-secondary); color: var(--text-secondary); border: 1px solid var(--border-light); }
+  .badge.brand-tag { background: #E6F1FB; color: #0C447C; }
+  .badge.comp-tag { background: #FAECE7; color: #712B13; }
+  .mention-time { font-size: 11px; color: var(--text-secondary); white-space: nowrap; align-self: flex-start; }
+  .empty-state { padding: 2.5rem; text-align: center; color: var(--text-secondary); font-size: 14px; }
+  .empty-icon { font-size: 32px; margin-bottom: 10px; }
+  .comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  .comp-card { background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-lg); padding: 1.25rem; }
+  .comp-card h4 { font-size: 14px; font-weight: 500; margin-bottom: 1rem; }
+  .sentiment-section { margin-bottom: 1rem; }
+  .sentiment-section .sent-who { font-size: 12px; color: var(--text-secondary); font-weight: 500; margin-bottom: 6px; }
+  .sentiment-row { display: flex; gap: 6px; }
+  .sent-block { flex: 1; border-radius: var(--radius-md); padding: 10px; text-align: center; }
+  .sent-block .sent-pct { font-size: 18px; font-weight: 500; }
+  .sent-block .sent-lbl { font-size: 11px; margin-top: 2px; }
+  .sent-block.pos { background: #EAF3DE; color: #3B6D11; }
+  .sent-block.neu { background: var(--bg-secondary); color: var(--text-secondary); }
+  .sent-block.neg { background: #FCEBEB; color: #A32D2D; }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .bar-label { font-size: 12px; color: var(--text-secondary); width: 110px; text-align: right; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { flex: 1; height: 7px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+  .bar-val { font-size: 12px; color: var(--text-secondary); width: 28px; flex-shrink: 0; }
+  .setup-wrap { max-width: 580px; }
+  .setup-wrap h3 { font-size: 16px; font-weight: 500; margin-bottom: 6px; }
+  .setup-wrap p { font-size: 13px; color: var(--text-secondary); margin-bottom: 1.25rem; line-height: 1.65; }
+  .key-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 1.5rem; }
+  .field-card { background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-lg); padding: 1rem; }
+  .field-card label { font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 6px; }
+  .field-card input[type="password"], .field-card input[type="text"] { width: 100%; font-size: 13px; padding: 7px 10px; border: 1px solid var(--border-med); border-radius: var(--radius-md); background: var(--bg-secondary); color: var(--text-primary); font-family: monospace; outline: none; }
+  .entity-setup-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
+  .entity-setup-row .type-badge { font-size: 11px; padding: 3px 8px; border-radius: 4px; flex-shrink: 0; }
+  .entity-setup-row input { font-size: 13px; padding: 7px 10px; border: 1px solid var(--border-med); border-radius: var(--radius-md); background: var(--bg-secondary); color: var(--text-primary); font-family: inherit; outline: none; }
+  .entity-setup-row input.name { flex: 1; }
+  .entity-setup-row input.terms { flex: 2.5; }
+  .entity-setup-row .del { background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 18px; padding: 2px 6px; line-height: 1; }
+  .entity-setup-row .del:hover { color: #E24B4A; }
+  .row-btns { display: flex; gap: 8px; margin-top: 12px; margin-bottom: 1.5rem; }
+  .info-box { background: #E6F1FB; border: 1px solid #B5D4F4; border-radius: var(--radius-md); padding: 10px 14px; font-size: 12px; color: #0C447C; line-height: 1.65; margin-bottom: 1.5rem; }
+  .btn { font-size: 13px; padding: 8px 18px; border-radius: var(--radius-md); cursor: pointer; font-family: inherit; transition: opacity 0.15s; border: 1px solid var(--border-med); background: var(--bg-secondary); color: var(--text-primary); }
+  .btn:hover { opacity: 0.8; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.primary { background: var(--text-primary); color: var(--bg-primary); border-color: transparent; }
+  .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--border-med); border-top-color: var(--bg-primary); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 5px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (max-width: 600px) {
+    .key-grid, .comparison-grid { grid-template-columns: 1fr; }
+    .comparison-grid .full-width { grid-column: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="top-bar">
+    <h1>Brand mention intelligence</h1>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="status-label"><span class="status-dot" id="status-dot"></span><span id="status-text">Not connected</span></span>
+      <button class="btn" onclick="showTab('setup')" style="font-size:12px;padding:5px 12px;">Settings</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('monitor')" id="tab-monitor">Monitor</button>
+    <button class="tab" onclick="showTab('compare')" id="tab-compare">Compare</button>
+    <button class="tab" onclick="showTab('setup')" id="tab-setup">Setup</button>
+  </div>
+
+  <!-- MONITOR -->
+  <div class="section active" id="section-monitor">
+    <div class="entity-row">
+      <div class="entity-group">
+        <label>Your brand</label>
+        <div class="chips" id="brand-chips"></div>
+      </div>
+      <div class="entity-group">
+        <label>Competitors</label>
+        <div class="chips" id="comp-chips"></div>
+      </div>
+      <div class="entity-group" style="align-self:flex-end;">
+        <button class="btn primary" onclick="fetchMentions()" id="fetch-btn" style="font-size:12px;padding:6px 16px;">Fetch mentions</button>
+      </div>
+    </div>
+
+    <div class="metric-grid">
+      <div class="metric"><div class="val" id="m-total">—</div><div class="lbl">Total mentions</div></div>
+      <div class="metric"><div class="val" id="m-brand">—</div><div class="lbl">Brand mentions</div></div>
+      <div class="metric"><div class="val" id="m-comp">—</div><div class="lbl">Competitor mentions</div></div>
+      <div class="metric"><div class="val" id="m-pos">—</div><div class="lbl">Positive sentiment</div></div>
+    </div>
+
+    <div class="progress-wrap" id="progress-wrap" style="display:none;">
+      <div class="progress-bar"><div class="progress-fill" id="prog" style="width:0%"></div></div>
+      <div class="prog-label" id="prog-label">Fetching from Firehose...</div>
+    </div>
+
+    <div class="feed-area">
+      <div class="feed-header">
+        <strong>Mentions feed</strong>
+        <div class="feed-filters">
+          <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
+          <button class="filter-btn" onclick="setFilter('brand',this)">Brand</button>
+          <button class="filter-btn" onclick="setFilter('competitor',this)">Competitors</button>
+          <button class="filter-btn" onclick="setFilter('positive',this)">Positive</button>
+          <button class="filter-btn" onclick="setFilter('negative',this)">Negative</button>
+        </div>
+      </div>
+      <div id="feed-items">
+        <div class="empty-state">
+          <div class="empty-icon">📡</div>
+          Configure your API keys and entities in Setup, then click Fetch mentions.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPARE -->
+  <div class="section" id="section-compare">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.5rem;">
+      <button class="btn primary" onclick="fetchMentions()" id="fetch-btn2" style="font-size:12px;padding:6px 16px;">Refresh data</button>
+      <span style="font-size:12px;color:var(--text-secondary);" id="compare-status">Fetch mentions first</span>
+    </div>
+
+    <div class="comparison-grid">
+      <div class="comp-card">
+        <h4>Sentiment breakdown</h4>
+        <div id="sent-compare">
+          <p style="font-size:12px;color:var(--text-secondary);">No data yet</p>
+        </div>
+      </div>
+
+      <div class="comp-card">
+        <h4>Content type distribution</h4>
+        <div id="type-chart-area" style="position:relative;height:200px;">
+          <p style="font-size:12px;color:var(--text-secondary);">No data yet</p>
+        </div>
+      </div>
+
+      <div class="comp-card full-width" style="grid-column:1/-1;">
+        <h4>Mention volume by entity</h4>
+        <div id="volume-bars"><p style="font-size:12px;color:var(--text-secondary);">No data yet</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETUP -->
+  <div class="section" id="section-setup">
+    <div class="setup-wrap">
+      <h3>API configuration</h3>
+      <p>Enter your Firehose tap token and Anthropic API key. Keys are stored in memory only — they are not saved to disk or sent anywhere other than those two APIs.</p>
+      <div class="key-grid">
+        <div class="field-card">
+          <label>Firehose tap token</label>
+          <input type="password" id="fh-key" placeholder="fh_..." />
+        </div>
+        <div class="field-card">
+          <label>Anthropic API key</label>
+          <input type="password" id="ant-key" placeholder="sk-ant-..." />
+        </div>
+      </div>
+
+      <h3 style="margin-bottom:6px;">Entities to monitor</h3>
+      <p>Add your brand name and product names as separate rows, then add competitor rows. Use comma-separated terms per row to match variants (e.g. "Acme, Acme Inc, acme.com").</p>
+      <div id="entity-setup-list"></div>
+      <div class="row-btns">
+        <button class="btn" onclick="addEntityRow('brand')" style="font-size:12px;">+ Add brand / product</button>
+        <button class="btn" onclick="addEntityRow('competitor')" style="font-size:12px;">+ Add competitor</button>
+      </div>
+
+      <button class="btn primary" onclick="saveSetup()">Save configuration</button>
+
+      <div class="info-box" style="margin-top:1.5rem;">
+        <strong>Coverage note:</strong> Firehose monitors publicly crawlable web pages. It does <em>not</em> cover X/Twitter, Facebook, or Instagram (all login-gated). Reddit posts and public forum threads are included since they are publicly accessible.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const state = {
+  firehoseKey: '',
+  anthropicKey: '',
+  entities: [
+    { name: 'Your brand', terms: '', type: 'brand' },
+    { name: 'Competitor A', terms: '', type: 'competitor' }
+  ],
+  mentions: [],
+  filter: 'all'
+};
+
+let typeChart = null;
+
+function showTab(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('section-' + id).classList.add('active');
+  document.getElementById('tab-' + id).classList.add('active');
+}
+
+function renderEntitySetup() {
+  const el = document.getElementById('entity-setup-list');
+  el.innerHTML = state.entities.map((e, i) => `
+    <div class="entity-setup-row">
+      <span class="type-badge" style="${e.type==='brand'?'background:#E6F1FB;color:#0C447C;':'background:#FAECE7;color:#712B13;'}">${e.type}</span>
+      <input class="name" type="text" placeholder="Label (e.g. Acme)" value="${e.name}" oninput="state.entities[${i}].name=this.value" />
+      <input class="terms" type="text" placeholder="Search terms, comma-separated" value="${e.terms}" oninput="state.entities[${i}].terms=this.value" />
+      <button class="del" onclick="state.entities.splice(${i},1);renderEntitySetup();">×</button>
+    </div>
+  `).join('');
+}
+
+function addEntityRow(type) {
+  state.entities.push({ name: type === 'brand' ? 'New brand' : 'New competitor', terms: '', type });
+  renderEntitySetup();
+}
+
+function saveSetup() {
+  state.firehoseKey = document.getElementById('fh-key').value.trim();
+  state.anthropicKey = document.getElementById('ant-key').value.trim();
+  renderChips();
+  showTab('monitor');
+}
+
+function renderChips() {
+  document.getElementById('brand-chips').innerHTML = state.entities.filter(e => e.type === 'brand').map(e =>
+    `<span class="chip brand">${e.name}</span>`).join('');
+  document.getElementById('comp-chips').innerHTML = state.entities.filter(e => e.type === 'competitor').map(e =>
+    `<span class="chip competitor">${e.name}</span>`).join('');
+}
+
+function setFilter(f, btn) {
+  state.filter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderFeed();
+}
+
+function setStatus(live, text) {
+  document.getElementById('status-dot').className = 'status-dot' + (live ? ' live' : '');
+  document.getElementById('status-text').textContent = text;
+}
+
+function setProgress(pct, label) {
+  document.getElementById('prog').style.width = pct + '%';
+  document.getElementById('prog-label').textContent = label;
+}
+
+async function fetchMentions() {
+  if (!state.firehoseKey) { showTab('setup'); alert('Add your Firehose tap token in Setup first.'); return; }
+  const entities = state.entities.filter(e => e.terms.trim());
+  if (!entities.length) { showTab('setup'); alert('Add at least one entity with search terms in Setup.'); return; }
+
+  ['fetch-btn','fetch-btn2'].forEach(id => {
+    const b = document.getElementById(id);
+    b.disabled = true;
+    b.innerHTML = '<span class="spinner"></span>Fetching...';
+  });
+
+  setStatus(true, 'Streaming...');
+  document.getElementById('progress-wrap').style.display = 'block';
+  setProgress(5, 'Connecting to Firehose...');
+
+  const allMentions = [];
+
+  for (let i = 0; i < entities.length; i++) {
+    const entity = entities[i];
+    const terms = entity.terms.split(',').map(t => t.trim()).filter(Boolean);
+    if (!terms.length) continue;
+    const lucene = terms.map(t => t.includes(' ') ? `"${t}"` : t).join(' OR ');
+    const query = `(${lucene}) AND recent:7d`;
+
+    setProgress(10 + (i / entities.length) * 35, `Creating rule for ${entity.name}...`);
+
+    let ruleId = null;
+    try {
+      const ruleRes = await fetch('https://api.firehose.com/v1/rules', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${state.firehoseKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: query, tag: entity.name, quality: true })
+      });
+      const ruleData = await ruleRes.json();
+      ruleId = ruleData?.data?.id;
+    } catch(e) {
+      console.error('Rule creation failed:', e);
+      continue;
+    }
+
+    if (!ruleId) continue;
+
+    setProgress(10 + (i / entities.length) * 35 + 10, `Streaming for ${entity.name}...`);
+
+    try {
+      const streamRes = await fetch(`https://api.firehose.com/v1/stream?timeout=12&limit=25&since=7d`, {
+        headers: { 'Authorization': `Bearer ${state.firehoseKey}` }
+      });
+      const text = await streamRes.text();
+      for (const line of text.split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const d = JSON.parse(line.slice(6));
+          if (d.document?.url && String(d.query_id) === String(ruleId)) {
+            allMentions.push({
+              ...d.document,
+              entityName: entity.name,
+              entityType: entity.type,
+              sentiment: null,
+              matched_at: d.matched_at
+            });
+          }
+        } catch(e) {}
+      }
+    } catch(e) {
+      console.error('Stream error:', e);
+    }
+
+    try {
+      await fetch(`https://api.firehose.com/v1/rules/${ruleId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${state.firehoseKey}` }
+      });
+    } catch(e) {}
+  }
+
+  setProgress(55, `Analysing sentiment for ${allMentions.length} mentions...`);
+
+  if (allMentions.length && state.anthropicKey) {
+    const BATCH = 5;
+    for (let i = 0; i < allMentions.length; i++) {
+      const m = allMentions[i];
+      const text = ((m.title || '') + ' ' + (m.markdown || '')).slice(0, 500);
+      try {
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': state.anthropicKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true'
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 10,
+            messages: [{
+              role: 'user',
+              content: `Sentiment of this content mentioning "${m.entityName}": positive, negative, or neutral? Reply with one word only.\n\n${text}`
+            }]
+          })
+        });
+        const rd = await r.json();
+        const raw = (rd.content?.[0]?.text || '').toLowerCase();
+        m.sentiment = raw.includes('positive') ? 'positive' : raw.includes('negative') ? 'negative' : 'neutral';
+      } catch(e) {
+        m.sentiment = 'neutral';
+      }
+      setProgress(55 + ((i + 1) / allMentions.length) * 40, `Sentiment: ${i + 1} / ${allMentions.length}`);
+    }
+  } else {
+    allMentions.forEach(m => m.sentiment = 'neutral');
+  }
+
+  state.mentions = allMentions;
+  setProgress(100, `Done — ${allMentions.length} mentions loaded`);
+  setTimeout(() => { document.getElementById('progress-wrap').style.display = 'none'; }, 2000);
+  setStatus(false, `${allMentions.length} mentions loaded`);
+
+  ['fetch-btn','fetch-btn2'].forEach(id => {
+    const b = document.getElementById(id);
+    b.disabled = false;
+    b.innerHTML = id === 'fetch-btn' ? 'Fetch mentions' : 'Refresh data';
+  });
+
+  renderMetrics();
+  renderFeed();
+  renderComparison();
+}
+
+function renderMetrics() {
+  const m = state.mentions;
+  const brand = m.filter(x => x.entityType === 'brand');
+  const comp = m.filter(x => x.entityType === 'competitor');
+  const pos = m.filter(x => x.sentiment === 'positive');
+  document.getElementById('m-total').textContent = m.length;
+  document.getElementById('m-brand').textContent = brand.length;
+  document.getElementById('m-comp').textContent = comp.length;
+  document.getElementById('m-pos').textContent = m.length ? Math.round(pos.length / m.length * 100) + '%' : '—';
+}
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const diff = (Date.now() - new Date(ts)) / 1000;
+  if (diff < 3600) return Math.round(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.round(diff / 3600) + 'h ago';
+  return Math.round(diff / 86400) + 'd ago';
+}
+
+function renderFeed() {
+  let items = [...state.mentions];
+  if (state.filter === 'brand') items = items.filter(x => x.entityType === 'brand');
+  if (state.filter === 'competitor') items = items.filter(x => x.entityType === 'competitor');
+  if (state.filter === 'positive') items = items.filter(x => x.sentiment === 'positive');
+  if (state.filter === 'negative') items = items.filter(x => x.sentiment === 'negative');
+
+  const el = document.getElementById('feed-items');
+  if (!items.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div>${state.mentions.length ? 'No mentions match this filter.' : 'No mentions loaded yet.'}</div>`;
+    return;
+  }
+
+  el.innerHTML = items.slice(0, 60).map(m => {
+    const sentClass = m.sentiment === 'positive' ? 'pos' : m.sentiment === 'negative' ? 'neg' : 'neu';
+    const typeLabel = m.page_types?.[0] ? m.page_types[0].split('/').filter(Boolean).join(' › ').toLowerCase() : '';
+    const snippet = (m.markdown || '').slice(0, 160).trim();
+    return `<div class="mention-item">
+      <div>
+        <div class="mention-url">${m.url || ''}</div>
+        <div class="mention-title">${(m.title || 'Untitled').slice(0, 100)}</div>
+        ${snippet ? `<div class="mention-snippet">${snippet}…</div>` : ''}
+        <div class="mention-meta">
+          <span class="badge ${sentClass}">${m.sentiment || 'neutral'}</span>
+          ${typeLabel ? `<span class="badge type">${typeLabel}</span>` : ''}
+          <span class="badge ${m.entityType === 'brand' ? 'brand-tag' : 'comp-tag'}">${m.entityName || ''}</span>
+        </div>
+      </div>
+      <div class="mention-time">${timeAgo(m.matched_at || m.publish_time)}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderComparison() {
+  const m = state.mentions;
+  if (!m.length) return;
+
+  document.getElementById('compare-status').textContent = `Based on ${m.length} mentions`;
+
+  function sentStats(arr) {
+    if (!arr.length) return { pos: 0, neu: 0, neg: 0 };
+    const pos = arr.filter(x => x.sentiment === 'positive').length;
+    const neg = arr.filter(x => x.sentiment === 'negative').length;
+    return {
+      pos: Math.round(pos / arr.length * 100),
+      neu: Math.round((arr.length - pos - neg) / arr.length * 100),
+      neg: Math.round(neg / arr.length * 100)
+    };
+  }
+
+  const brand = m.filter(x => x.entityType === 'brand');
+  const comp = m.filter(x => x.entityType === 'competitor');
+  const bs = sentStats(brand);
+  const cs = sentStats(comp);
+
+  document.getElementById('sent-compare').innerHTML = `
+    <div class="sentiment-section">
+      <div class="sent-who">Your brand</div>
+      <div class="sentiment-row">
+        <div class="sent-block pos"><div class="sent-pct">${bs.pos}%</div><div class="sent-lbl">Positive</div></div>
+        <div class="sent-block neu"><div class="sent-pct">${bs.neu}%</div><div class="sent-lbl">Neutral</div></div>
+        <div class="sent-block neg"><div class="sent-pct">${bs.neg}%</div><div class="sent-lbl">Negative</div></div>
+      </div>
+    </div>
+    <div class="sentiment-section">
+      <div class="sent-who">Competitors (combined)</div>
+      <div class="sentiment-row">
+        <div class="sent-block pos"><div class="sent-pct">${cs.pos}%</div><div class="sent-lbl">Positive</div></div>
+        <div class="sent-block neu"><div class="sent-pct">${cs.neu}%</div><div class="sent-lbl">Neutral</div></div>
+        <div class="sent-block neg"><div class="sent-pct">${cs.neg}%</div><div class="sent-lbl">Negative</div></div>
+      </div>
+    </div>`;
+
+  const grouped = {};
+  m.forEach(x => { grouped[x.entityName] = (grouped[x.entityName] || 0) + 1; });
+  const maxVol = Math.max(...Object.values(grouped), 1);
+  document.getElementById('volume-bars').innerHTML = Object.entries(grouped)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => {
+      const e = state.entities.find(x => x.name === name);
+      const color = e?.type === 'brand' ? '#185FA5' : '#993C1D';
+      return `<div class="bar-row">
+        <div class="bar-label" title="${name}">${name}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.round(count/maxVol*100)}%;background:${color};"></div></div>
+        <div class="bar-val">${count}</div>
+      </div>`;
+    }).join('');
+
+  const typeMap = {};
+  m.forEach(x => {
+    const t = x.page_types?.[0]?.split('/')[1] || 'Other';
+    typeMap[t] = (typeMap[t] || 0) + 1;
+  });
+  const typeLabels = Object.keys(typeMap).slice(0, 7);
+  const typeVals = typeLabels.map(t => typeMap[t]);
+
+  const area = document.getElementById('type-chart-area');
+  area.innerHTML = '<canvas id="type-canvas"></canvas>';
+  area.style.position = 'relative';
+  area.style.height = '220px';
+
+  if (typeChart) { typeChart.destroy(); typeChart = null; }
+  typeChart = new Chart(document.getElementById('type-canvas'), {
+    type: 'doughnut',
+    data: {
+      labels: typeLabels,
+      datasets: [{
+        data: typeVals,
+        backgroundColor: ['#185FA5','#1D9E75','#993C1D','#BA7517','#533AB7','#A32D2D','#5F5E5A'],
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: 'right', labels: { boxWidth: 10, font: { size: 11 }, color: '#888' } }
+      }
+    }
+  });
+}
+
+renderEntitySetup();
+renderChips();
+</script>
+</body>
+</html>
